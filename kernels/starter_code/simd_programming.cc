@@ -125,6 +125,16 @@ void MatmulOperator::mat_mul_simd_programming(struct matmul_params *params) {
                 const __m256i zero_point = _mm256_set1_epi8(8);
                 __m256i w_0, w_128;
 
+                // 解包4位权重为8位
+                // 提取低4位权重
+                w_0 = _mm256_and_si256(raw_w, lowMask);
+                // 提取高4位权重：右移4位后与掩码
+                w_128 = _mm256_and_si256(_mm256_srli_epi16(raw_w, 4), lowMask);
+                
+                // 应用零点偏移，将范围从(0, 15)转换为(-8, 7)
+                w_0 = _mm256_sub_epi8(w_0, zero_point);
+                w_128 = _mm256_sub_epi8(w_128, zero_point);
+
                 // Perform int8 dot product with _mm256_maddubs_epi16
                 /* Syntax of _mm256_maddubs_epi16:
                    __m256i _mm256_maddubs_epi16(__m256i s1, __m256i s2): Multiplies vertically each unsigned byte of
@@ -152,6 +162,8 @@ void MatmulOperator::mat_mul_simd_programming(struct matmul_params *params) {
                 // Hint: use `_mm256_maddubs_epi16` to complete the following computation
                 // dot = ax * sy
                 // dot2 = ax2 * sy2
+                dot = _mm256_maddubs_epi16(ax, sy);
+                dot2 = _mm256_maddubs_epi16(ax2, sy2);
 
                 // Convert int32 vectors to floating point vectors
                 const __m256i ones = _mm256_set1_epi16(1);

@@ -87,9 +87,33 @@ void MatmulOperator::mat_mul_loop_unrolling(struct matmul_params *params) {
                 int intermediate_sum0_2nd = 0, intermediate_sum1_2nd = 0, intermediate_sum2_2nd = 0,
                     intermediate_sum3_2nd = 0;
                 for (int qj = 0; qj < 32; qj++) {
-                    // TODO: decode a packed byte into two int8 in the range of (-8, 7)
+                    // 解码一个字节为两个 int8 值（范围 -8 到 7）
+                    uint8_t packed_byte0 = *w0_int4++;
+                    uint8_t packed_byte1 = *w1_int4++;
+                    uint8_t packed_byte2 = *w2_int4++;
+                    uint8_t packed_byte3 = *w3_int4++;
+                    
+                    signed char val0_1 = (packed_byte0 & 0x0F) - 8.0;
+                    signed char val0_2 = (packed_byte0 >> 4) - 8.0;
+                    
+                    signed char val1_1 = (packed_byte1 & 0x0F) - 8.0;
+                    signed char val1_2 = (packed_byte1 >> 4) - 8.0;
+                    
+                    signed char val2_1 = (packed_byte2 & 0x0F) - 8.0;
+                    signed char val2_2 = (packed_byte2 >> 4) - 8.0;
+                    
+                    signed char val3_1 = (packed_byte3 & 0x0F) - 8.0;
+                    signed char val3_2 = (packed_byte3 >> 4) - 8.0;
 
-                    // TODO: int8 multiply and accumulate operation
+                    // int8 乘加操作
+                    intermediate_sum0 += a_int8[qj] * val0_1;
+                    intermediate_sum1 += a_int8[qj] * val1_1;
+                    intermediate_sum2 += a_int8[qj] * val2_1;
+                    intermediate_sum3 += a_int8[qj] * val3_1;
+                    intermediate_sum0_2nd += a_int8[qj + 32] * val0_2;
+                    intermediate_sum1_2nd += a_int8[qj + 32] * val1_2;
+                    intermediate_sum2_2nd += a_int8[qj + 32] * val2_2;
+                    intermediate_sum3_2nd += a_int8[qj + 32] * val3_2;
                 }
                 // dequantize the sum into floating point
                 acc0 += (float)intermediate_sum0 * s_a * s_w0;

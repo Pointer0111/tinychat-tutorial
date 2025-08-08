@@ -134,6 +134,20 @@ static void *all_techniques_worker_func(void *args) {
                 const __m256i zero_point = _mm256_set1_epi8(8);
                 __m256i w_0, w_128, w_0_next, w_128_next;
 
+                // 解包第一个 256 位权重向量
+                w_0 = _mm256_and_si256(raw_w, lowMask);
+                w_128 = _mm256_and_si256(_mm256_srli_epi16(raw_w, 4), lowMask);
+                
+                // 解包第二个 256 位权重向量
+                w_0_next = _mm256_and_si256(raw_w_next, lowMask);
+                w_128_next = _mm256_and_si256(_mm256_srli_epi16(raw_w_next, 4), lowMask);
+                
+                // 应用零点偏移，将范围从(0, 15)转换为(-8, 7)
+                w_0 = _mm256_sub_epi8(w_0, zero_point);
+                w_128 = _mm256_sub_epi8(w_128, zero_point);
+                w_0_next = _mm256_sub_epi8(w_0_next, zero_point);
+                w_128_next = _mm256_sub_epi8(w_128_next, zero_point);
+
                 // Perform int8 dot product with _mm256_maddubs_epi16
                 /* Syntax of _mm256_maddubs_epi16:
                    __m256i _mm256_maddubs_epi16(__m256i s1, __m256i s2): Multiplies vertically each unsigned byte of
@@ -169,6 +183,10 @@ static void *all_techniques_worker_func(void *args) {
                 // dot2 = ax2 * sy2
                 // dot3 = ax_next * sy_next
                 // dot4 = ax2_next * sy2_next
+                dot = _mm256_maddubs_epi16(ax, sy);
+                dot2 = _mm256_maddubs_epi16(ax2, sy2);
+                dot3 = _mm256_maddubs_epi16(ax_next, sy_next);
+                dot4 = _mm256_maddubs_epi16(ax2_next, sy2_next);
 
                 // Convert int32 vectors to floating point vectors
                 const __m256i ones = _mm256_set1_epi16(1);
@@ -206,10 +224,10 @@ static void *all_techniques_worker_func(void *args) {
 
 namespace matmul {
 void MatmulOperator::mat_mul_all_techniques(struct matmul_params *params) {
-    int i, j, k;
     const struct matrix *A = &params->A, *B = &params->B, *C = &params->C;
     const int block_size = params->block_size;
     float *scale = params->scales, *offset = params->offset;
+    int m = C->row, n = C->column, k = A->column;
 
     assert(params->block_size % 32 == 0);  // support block size to be multiples of 32
     assert(A->row == C->row);              // support block size to be multiples of 32
@@ -222,7 +240,18 @@ void MatmulOperator::mat_mul_all_techniques(struct matmul_params *params) {
     assert(params->block_size == 32);  // support block size 32 for now
 
     // TODO: Thread creation
-
+    for (int j = 0; j < num_thread; j++) {
+        threads_args[j].start_j = j * (n / num_thread);
+        if (j == num_thread - 1)
+            threads_args[j].end_j = n;  // 最后一个线程处理到最后一列
+        else
+            threads_args[j].end_j = (j + 1) * (n / num_thread);
+        threads_args[j].params = params;
+        pthread_create(&thread_pool[j], NULL, all_techniques_worker_func, &threads_args[j]);
+    }
     // TODO: Join threads
+    for (int j = 0; j < num_thread; j++) {
+        pthread_join(thread_pool[j], NULL);
+    }
 };
 }  // namespace matmul

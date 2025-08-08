@@ -19,6 +19,7 @@
 .vscode/
 
 assets/
+!assets/image.png
 *.bin
 !ggml-vocab.bin
 *.zip
